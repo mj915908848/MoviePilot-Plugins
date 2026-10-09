@@ -29,7 +29,7 @@ class MediaSyncDel(_PluginBase):
     # 插件图标
     plugin_icon = "mediasyncdel.png"
     # 插件版本
-    plugin_version = "1.9.2"
+    plugin_version = "1.9.3"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -957,6 +957,22 @@ class MediaSyncDel(_PluginBase):
             transfer_history: List[TransferHistory] = self._transferhis.get_by(tmdbid=tmdb_id,
                                                                                mtype=mtype.value,
                                                                                dest=media_path)
+            if not transfer_history and Path(media_path).suffix.lower() == ".strm":
+                # Emby 删除的是 STRM 文件，而 MoviePilot 转移记录可能指向实际媒体文件。
+                # 只在 TMDB、类型和所在目录均相同且仅有一条记录时关联，避免误删其他版本。
+                media_dir = Path(media_path.replace('\\', '/')).parent
+                media_exts = {ext.lower() for ext in settings.RMT_MEDIAEXT}
+                candidates = [
+                    history for history in self._transferhis.get_by(tmdbid=tmdb_id, mtype=mtype.value)
+                    if history.dest
+                    and Path(history.dest.replace('\\', '/')).parent == media_dir
+                    and Path(history.dest).suffix.lower() in media_exts
+                ]
+                if len(candidates) == 1:
+                    transfer_history = candidates
+                    logger.info(f"STRM 电影 {media_path} 匹配到转移记录 {candidates[0].dest}")
+                elif len(candidates) > 1:
+                    logger.warning(f"STRM 电影 {media_path} 找到多条转移记录，跳过自动删除")
         # 删除电视剧
         elif mtype == MediaType.TV and not season_num and not episode_num:
             msg = f'剧集 {media_name} {tmdb_id}'
