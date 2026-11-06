@@ -28,7 +28,7 @@ Telegram 交流群: https://t.me/+1lcscM_EbqhkN2Rl
 
 #### 媒体管理类
 
-- [Emby媒体库封面生成 V3](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v3/mediacovergenerator)：来源于 [wio-ki/MoviePilot-Plugins](https://github.com/wio-ki/MoviePilot-Plugins)，支持静态与动态封面。保留原插件版本号以便降级：1.2.0 为历史原版，1.2.1 保留 1.2 风格并修复电影、剧集多版本海报重复，1.3.2 为新版去重修复。通过本仓库的 Release 版本列表选择安装，降级后可在自动更新设置中排除此插件。
+- [Emby媒体库封面生成 V3](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v3/mediacovergenerator)：来源于 [wio-ki/MoviePilot-Plugins](https://github.com/wio-ki/MoviePilot-Plugins)，本仓库仅保留上游原版 1.2.0，可通过 Release 安装。
 
 - [神医媒体文件同步删除 V3](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v3/samediasyncdel) / [V2](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v2/samediasyncdel)：通过神医插件通知同步删除历史记录、源文件和下载任务。V3 3.0.1 支持 STRM 电影、多条同源路径映射与整剧转移记录匹配，使用 V3 的媒体来源和媒体 ID 查询；多版本无法唯一匹配时跳过删除。
 - [ffprobe命名补充 V3](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v3/ffprobenamingsupplement) / [V2](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v2/ffprobenamingsupplement)：整理重命名时调用 `ffprobe`，统一补全视频及关联字幕、音轨的 `videoFormat`、`videoCodec`、`videoBit`、`audioCodec`、`fps`、`effect`，支持 STRM
