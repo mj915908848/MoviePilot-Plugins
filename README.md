@@ -28,7 +28,7 @@ Telegram 交流群: https://t.me/+1lcscM_EbqhkN2Rl
 
 #### 媒体管理类
 
-- [神医媒体文件同步删除 V3](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v3/samediasyncdel) / [V2](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v2/samediasyncdel)：通过神医插件通知同步删除历史记录、源文件和下载任务。
+- [神医媒体文件同步删除 V3](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v3/samediasyncdel) / [V2](https://github.com/mj915908848/MoviePilot-Plugins-DDSRem/tree/main/plugins.v2/samediasyncdel)：通过神医插件通知同步删除历史记录、源文件和下载任务。V3 3.0.1 支持 STRM 电影、多条同源路径映射与整剧转移记录匹配，使用 V3 的媒体来源和媒体 ID 查询；多版本无法唯一匹配时跳过删除。
 - [ffprobe命名补充 V3](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v3/ffprobenamingsupplement) / [V2](https://github.com/DDSRem-Dev/MoviePilot-Plugins/tree/main/plugins.v2/ffprobenamingsupplement)：整理重命名时调用 `ffprobe`，统一补全视频及关联字幕、音轨的 `videoFormat`、`videoCodec`、`videoBit`、`audioCodec`、`fps`、`effect`，支持 STRM
 
 #### 工具类

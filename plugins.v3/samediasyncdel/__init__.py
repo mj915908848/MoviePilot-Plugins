@@ -39,7 +39,7 @@ class SaMediaSyncDel(_PluginBase):
     # 插件图标
     plugin_icon = "mediasyncdel.png"
     # 插件版本
-    plugin_version = "3.0.0"
+    plugin_version = "3.0.1"
     # 插件作者
     plugin_author = "DDSRem,thsrite"
     # 作者主页
@@ -818,8 +818,8 @@ class SaMediaSyncDel(_PluginBase):
         """
         判断路径是否包含
         """
-        full = Path(full_path).parts
-        prefix = Path(prefix_path).parts
+        full = Path(full_path.replace("\\", "/")).parts
+        prefix = Path(prefix_path.replace("\\", "/")).parts
 
         if len(prefix) > len(full):
             return False
@@ -835,9 +835,168 @@ class SaMediaSyncDel(_PluginBase):
             if not path:
                 continue
             parts = path.split("#", 1)
-            if self.has_prefix(media_path, parts[0]):
+            if len(parts) == 2 and all(parts) and self.has_prefix(media_path, parts[0]):
                 return True, parts
         return False, None
+
+    def __get_local_media_paths(self, media_path):
+        """返回所有与 Emby 路径匹配的 MoviePilot 本地路径"""
+        if not self._local_library_path:
+            return [media_path]
+
+        mapped_paths = []
+        for mapping in self._local_library_path.splitlines():
+            parts = mapping.split("#", 1)
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                continue
+            if self.has_prefix(media_path, parts[0]):
+                mapped_path = media_path.replace("\\", "/").replace(
+                    parts[0].replace("\\", "/"), parts[1].replace("\\", "/"), 1
+                )
+                if mapped_path not in mapped_paths:
+                    mapped_paths.append(mapped_path)
+        return mapped_paths
+
+    def __find_local_transfer_his(
+        self,
+        media_type: str,
+        media_name: str,
+        media_path: str,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        season_num: str,
+        episode_num: str,
+    ):
+        """在全部匹配的本地路径映射中查找唯一可删除的转移记录"""
+        if not media_path or not media_source or not media_id:
+            return None, "", []
+
+        mapped_paths = self.__get_local_media_paths(media_path)
+        if not mapped_paths:
+            logger.error(f"{media_name} 同步删除失败，未匹配到本地媒体库路径映射")
+            return None, None, []
+
+        if media_type not in ["Movie", "MOV"] and not season_num and not episode_num:
+            # 整剧删除时，STRM 目录已消失，但映射目标里的实际视频目录仍会存在
+            if Path(media_path).exists():
+                logger.warn(f"媒体库路径 {media_path} 未被删除或重新生成，跳过处理")
+                return None, None, []
+
+            series_dirs = [Path(path) for path in mapped_paths]
+            histories = self._transferhis.get_by(
+                media_source=media_source, media_id=media_id, mtype=MediaType.TV.value
+            ) or []
+            matched_histories = [
+                history
+                for history in histories
+                if history.dest
+                and any(
+                    Path(history.dest.replace("\\", "/")).is_relative_to(series_dir)
+                    for series_dir in series_dirs
+                )
+            ]
+            if matched_histories:
+                return media_path, f"剧集 {media_name} {media_id}", matched_histories
+            logger.warning(f"{media_name} 未匹配到整剧转移记录，映射后候选路径: {mapped_paths}")
+            return None, "", []
+
+        # 整季按媒体身份查询，遍历映射会把相同记录重复计为多个结果
+        if media_type not in ["Movie", "MOV"] and not (season_num and episode_num):
+            mapped_paths = mapped_paths[:1]
+
+        strm_movie = (
+            media_type in ["Movie", "MOV"]
+            and Path(media_path).suffix.lower() == ".strm"
+        )
+        available_paths = []
+        for mapped_path in mapped_paths:
+            if Path(mapped_path).exists():
+                logger.warn(f"转移路径 {mapped_path} 未被删除或重新生成，跳过处理")
+            else:
+                available_paths.append(mapped_path)
+        if not available_paths:
+            return None, None, []
+
+        if strm_movie:
+            movie_type = MediaType.MOVIE.value
+            msg = f"电影 {media_name} {media_id}"
+            exact_matches = [
+                (mapped_path, history)
+                for mapped_path in available_paths
+                for history in (
+                    self._transferhis.get_by(
+                        media_source=media_source, media_id=media_id, mtype=movie_type, dest=mapped_path
+                    )
+                    or []
+                )
+            ]
+            if len(exact_matches) == 1:
+                mapped_path, history = exact_matches[0]
+                return mapped_path, msg, [history]
+            if len(exact_matches) > 1:
+                logger.warning(f"{media_name} 在多个本地路径映射中找到精确记录，跳过自动删除")
+                return None, None, []
+
+            media_exts = {ext.lower() for ext in settings.RMT_MEDIAEXT}
+            movie_histories = self._transferhis.get_by(
+                media_source=media_source, media_id=media_id, mtype=movie_type,
+                match_all_versions=True,
+            ) or []
+            media_matches = [
+                (mapped_path, history)
+                for mapped_path in available_paths
+                for history in movie_histories
+                if history.dest
+                and Path(history.dest.replace("\\", "/")).parent
+                == Path(mapped_path).parent
+                and Path(history.dest).suffix.lower() in media_exts
+            ]
+            if len(media_matches) == 1:
+                mapped_path, history = media_matches[0]
+                logger.info(f"STRM 电影 {mapped_path} 匹配到唯一转移记录 {history.dest}")
+                return mapped_path, msg, [history]
+            if len(media_matches) > 1:
+                filename_matches = [
+                    (mapped_path, history)
+                    for mapped_path, history in media_matches
+                    if Path(history.dest.replace("\\", "/")).stem.casefold()
+                    == Path(mapped_path).stem.casefold()
+                ]
+                if len(filename_matches) == 1:
+                    mapped_path, history = filename_matches[0]
+                    logger.info(
+                        f"STRM 电影 {mapped_path} 按文件名匹配到转移记录 {history.dest}"
+                    )
+                    return mapped_path, msg, [history]
+                logger.warning(
+                    f"{media_name} 在本地路径映射中找到多条电影转移记录，跳过自动删除"
+                )
+                return None, None, []
+
+        matches = []
+        for mapped_path in available_paths:
+            msg, histories = self.__get_transfer_his(
+                media_type=media_type,
+                media_name=media_name,
+                media_path=mapped_path,
+                media_source=media_source,
+                media_id=media_id,
+                season_num=season_num,
+                episode_num=episode_num,
+                strm_movie=strm_movie,
+            )
+            if histories:
+                matches.append((mapped_path, msg, histories))
+
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            logger.warning(
+                f"{media_name} 在多个本地路径映射中找到转移记录，跳过自动删除"
+            )
+            return None, None, []
+        logger.warning(f"{media_name} 未匹配到转移记录，映射后候选路径: {mapped_paths}")
+        return None, "", []
 
     def __get_p115_media_path(self, media_path):
         """
@@ -999,21 +1158,13 @@ class SaMediaSyncDel(_PluginBase):
             )
             return
 
+        strm_movie = (
+            media_type in ["Movie", "MOV"]
+            and Path(media_path).suffix.lower() == ".strm"
+        )
+
         if media_storage == "local":
-            # 处理路径映射
-            if self._local_library_path:
-                _, sub_paths = self.__get_local_media_path(media_path)
-                media_path = media_path.replace(sub_paths[0], sub_paths[1]).replace(
-                    "\\", "/"
-                )
-
-            # 兼容重新整理的场景
-            if Path(media_path).exists():
-                logger.warn(f"转移路径 {media_path} 未被删除或重新生成，跳过处理")
-                return
-
-            # 查询转移记录
-            msg, transfer_history = self.__get_transfer_his(
+            media_path, msg, transfer_history = self.__find_local_transfer_his(
                 media_type=media_type,
                 media_name=media_name,
                 media_path=media_path,
@@ -1022,6 +1173,8 @@ class SaMediaSyncDel(_PluginBase):
                 season_num=season_num,
                 episode_num=episode_num,
             )
+            if msg is None:
+                return
 
             logger.info(f"正在同步删除{msg}")
 
@@ -1134,6 +1287,7 @@ class SaMediaSyncDel(_PluginBase):
                 media_id=media_id,
                 season_num=season_num,
                 episode_num=episode_num,
+                strm_movie=strm_movie,
             )
 
             # 如果没有msg使用媒体名称替代
@@ -1151,6 +1305,7 @@ class SaMediaSyncDel(_PluginBase):
                     media_id=media_id,
                     season_num=season_num,
                     episode_num=episode_num,
+                    strm_movie=strm_movie,
                 )
                 # 如果没有msg使用媒体名称替代
                 if not msg:
@@ -1277,6 +1432,7 @@ class SaMediaSyncDel(_PluginBase):
                 media_id=media_id,
                 season_num=season_num,
                 episode_num=episode_num,
+                strm_movie=strm_movie,
             )
 
             # 如果没有msg使用媒体名称替代
@@ -1294,6 +1450,7 @@ class SaMediaSyncDel(_PluginBase):
                     media_id=media_id,
                     season_num=season_num,
                     episode_num=episode_num,
+                    strm_movie=strm_movie,
                 )
                 # 如果没有msg使用媒体名称替代
                 if not msg:
@@ -1566,6 +1723,7 @@ class SaMediaSyncDel(_PluginBase):
         media_id: Optional[str],
         season_num: str,
         episode_num: str,
+        strm_movie: bool = False,
     ):
         """
         查询转移记录
@@ -1595,6 +1753,31 @@ class SaMediaSyncDel(_PluginBase):
                 mtype=mtype.value,
                 dest=media_path,
             )
+            if (
+                not transfer_history
+                and media_path
+                and (strm_movie or Path(media_path).suffix.lower() == ".strm")
+            ):
+                media_path_obj = Path(media_path.replace("\\", "/"))
+                media_exts = {ext.lower() for ext in settings.RMT_MEDIAEXT}
+                # V3 身份查询需显式枚举版本，随后仅保留目标目录内的唯一候选以防误删
+                candidates = [
+                    history
+                    for history in self._transferhis.get_by(
+                        media_source=media_source,
+                        media_id=media_id,
+                        mtype=mtype.value,
+                        match_all_versions=True,
+                    )
+                    if history.dest
+                    and Path(history.dest.replace("\\", "/")).parent == media_path_obj.parent
+                    and Path(history.dest).suffix.lower() in media_exts
+                ]
+                if len(candidates) == 1:
+                    transfer_history = candidates
+                    logger.info(f"STRM 电影 {media_path} 匹配到转移记录 {candidates[0].dest}")
+                elif candidates:
+                    logger.warning(f"STRM 电影 {media_path} 找到多条转移记录，跳过自动删除")
         # 删除电视剧
         elif mtype == MediaType.TV and not season_num and not episode_num:
             msg = f"剧集 {media_name} {media_id}"

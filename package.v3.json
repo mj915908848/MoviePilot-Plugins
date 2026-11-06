@@ -192,13 +192,14 @@
         "name": "神医媒体文件同步删除",
         "description": "通过神医插件通知同步删除历史记录、源文件和下载任务。",
         "labels": "媒体库,文件整理",
-        "version": "3.0.0",
+        "version": "3.0.1",
         "release": true,
         "icon": "mediasyncdel.png",
         "author": "DDSRem",
         "system_version": ">=3.0.0",
         "level": 1,
         "history": {
+            "v3.0.1": "适配 V3 媒体身份查询，支持 STRM 电影、多路径映射与整剧转移记录匹配",
             "v3.0.0": "适配 MoviePilot V3 SDK、数据库与统一媒体身份契约"
         }
     }
