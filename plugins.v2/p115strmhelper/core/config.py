@@ -95,6 +95,13 @@ class ConfigManager(BaseModel):
         validate_assignment=True,
     )
 
+    @field_validator("moviepilot_address", mode="before")
+    @classmethod
+    def _normalize_moviepilot_address(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
     @field_validator(
         "cron_full_sync_strm", "increment_sync_cron", "cron_clear", mode="before"
     )
@@ -244,7 +251,7 @@ class ConfigManager(BaseModel):
     @classmethod
     def _validate_hdhive_checkin_time_range(cls, v: Any) -> str:
         """
-        校验 HDHive 签到时间窗口字符串
+        校验 RE0 签到时间窗口字符串
         """
         if v is None or (isinstance(v, str) and not v.strip()):
             return "06:00-09:00"
@@ -701,27 +708,27 @@ class ConfigManager(BaseModel):
     )
     hdhive_search_enabled: bool = Field(
         default=False,
-        description="HDHive 频道搜索（浏览器自动化）",
+        description="RE0 频道搜索（浏览器自动化）",
     )
     hdhive_checkin_username: Optional[str] = Field(
         default=None,
-        description="HDHive 账户（签到与频道搜索共用）",
+        description="RE0 账户（签到与频道搜索共用）",
     )
     hdhive_checkin_password: Optional[str] = Field(
         default=None,
-        description="HDHive 密码（签到与频道搜索共用）",
+        description="RE0 密码（签到与频道搜索共用）",
     )
     hdhive_checkin_daily_enabled: bool = Field(
         default=False,
-        description="HDHive 每日签到",
+        description="RE0 每日签到",
     )
     hdhive_checkin_gamble_enabled: bool = Field(
         default=False,
-        description="HDHive 赌狗签到",
+        description="RE0 赌狗签到",
     )
     hdhive_checkin_time_range: Optional[str] = Field(
         default="06:00-09:00",
-        description="HDHive 签到随机时间段 HH:MM-HH:MM",
+        description="RE0 签到随机时间段 HH:MM-HH:MM",
     )
     p115_checkin_enabled: bool = Field(
         default=False,
@@ -889,7 +896,7 @@ class ConfigManager(BaseModel):
         """
         返回 p115center 许可证
         """
-        return "0e75f9901b53ad40501b711d20e3ae102b869d88f4adfb8e7a966088973c4100"
+        return "255d62790a83dd27329244a03fbfd6355696c9cbca607d24b8a1857c358240ae"
 
     @property
     def plugin_aligo_path(self) -> Path:
