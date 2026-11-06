@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import os
+from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,6 +21,11 @@ def _method(path: Path, name: str, namespace: Dict[str, Any]) -> Any:
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == name
+        and not any(
+            (isinstance(decorator, ast.Name) and decorator.id == "overload")
+            or (isinstance(decorator, ast.Attribute) and decorator.attr == "overload")
+            for decorator in node.decorator_list
+        )
     )
     method.decorator_list = []
     code = ast.Module(
@@ -364,7 +370,11 @@ class TestV3ShareQueueLifecycle(TestCase):
         quiesce = _method(path, "_quiesce_hooks", {})
         plugin, namespace = self._plugin_stop()
         namespace["servicer"].stop.side_effect = [False, True]
-        lifecycle = SimpleNamespace(_quiesced_hooks={}, _logger=MagicMock())
+        lifecycle = SimpleNamespace(
+            _quiesced_hooks={},
+            _logger=MagicMock(),
+            _gate=SimpleNamespace(hold=MagicMock(side_effect=lambda *args: nullcontext())),
+        )
         self.assertIs(quiesce(lifecycle, {"P115StrmHelper": plugin}), False)
         self.assertNotIn("stop_service", lifecycle._quiesced_hooks["P115StrmHelper"])
         self.assertIs(quiesce(lifecycle, {"P115StrmHelper": plugin}), True)

@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 from types import MethodType, SimpleNamespace
+from typing import cast, overload
 from unittest import TestCase
 from unittest.mock import MagicMock
 
@@ -79,6 +80,8 @@ class TestV3U115Requests(TestCase):
         )
         host_namespace = {
             "StorageBase": base,
+            "cast": cast,
+            "overload": overload,
             "WeakSingleton": singleton,
             "StorageSchema": SimpleNamespace(U115="u115"),
             "U115_DEFAULT_ACCEPTED_CODES": (0, 20004),

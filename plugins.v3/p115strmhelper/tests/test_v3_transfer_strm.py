@@ -1,6 +1,8 @@
 import importlib
 import os
 import sys
+from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import ModuleType, SimpleNamespace
@@ -108,22 +110,28 @@ class TestV3TransferStrm(TestCase):
         self.events = importlib.import_module("app.sdk.events")
         self.assertIs(self.events.snapshot_event_data, snapshot)
         self.durable = importlib.import_module("app.application.chain.events")
-        self.outbox = _method(
+        module("app.runtime.log", logger=MagicMock())
+        outbox_contract = importlib.import_module("app.application.outbox")
+        self.outbox_contract = outbox_contract
+        self.dispatch_outbox = _method(
             host / "app/startup/composition/outbox.py",
-            "build_outbox_handlers",
+            "dispatch_event_handler",
             {
                 "EventManager": lambda: SimpleNamespace(
                     send_event_strict=self._dispatch
                 ),
                 "EventType": self.types.EventType,
-                "durable_event_topic": lambda event: event.value,
+                "DURABLE_EVENT_TOPICS": outbox_contract.DURABLE_EVENT_TOPICS,
+                "EVENT_HANDLER_TOPIC_PREFIX": outbox_contract.EVENT_HANDLER_TOPIC_PREFIX,
+                "restore_download_added": self.durable.restore_download_added,
                 "restore_transfer_result": self.durable.restore_transfer_result,
-                "DOWNLOAD_NOTIFICATION_TOPIC": "download.notification",
-                "DOWNLOAD_MODULE_TOPIC": "download.module",
-                "DOWNLOAD_SUBTITLE_TOPIC": "download.subtitle",
-                "validate_durable_event_handlers": lambda handlers: None,
+                "correlation_scope": lambda key: nullcontext(),
             },
-        )()
+        )
+        self.outbox = {
+            event.value: partial(self._deliver_outbox_event, event)
+            for event in outbox_contract.DURABLE_EVENT_TOPICS
+        }
         self.logger = MagicMock()
         module("app.sdk.logging", logger=self.logger)
         module("app.sdk.utilities", SystemUtils=MagicMock())
@@ -254,7 +262,24 @@ class TestV3TransferStrm(TestCase):
             mediainfodownloader=self.downloader,
         )
 
-    def _dispatch(self, event_type: Any, payload: Dict[str, Any]) -> None:
+    def _deliver_outbox_event(self, event_type: Any, message: Any) -> None:
+        # 宿主现按处理器投递子消息，在真实交付边界验证对象恢复与失败传播
+        self.dispatch_outbox(
+            SimpleNamespace(
+                topic=self.outbox_contract.EVENT_HANDLER_TOPIC_PREFIX + "test",
+                payload={
+                    "event_type": event_type.value,
+                    "event_payload": message.payload,
+                    "event_key": "test-transfer",
+                    "handler_id": "p115-strm-test",
+                },
+            )
+        )
+
+    def _dispatch(
+        self, event_type: Any, payload: Dict[str, Any], *, handler_id: str
+    ) -> None:
+        self.assertEqual(handler_id, "p115-strm-test")
         self.assertIsInstance(payload["transferinfo"], self.transfer_type)
         self.assertIsInstance(payload["mediainfo"], self.context.MediaInfo)
         self._run(payload, event_type)
